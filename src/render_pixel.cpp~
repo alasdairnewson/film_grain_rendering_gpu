@@ -1,0 +1,151 @@
+
+#include "pseudo_random_number_generator.h"
+#include "render_pixel.h"
+
+float sqDistance(const float x1, const float y1, const float x2, const float y2)
+{
+	return((x1-x2)*(x1-x2) + (y1-y2)*(y1-y2));
+}
+
+float render_pixel(float *imgIn, int yOut, int xOut, unsigned int mIn, unsigned int nIn, unsigned int mOut, unsigned int nOut,
+	unsigned int offset, unsigned int nMonteCarlo, float grainRadius, float grainSigma, float sigmaFilter,
+	float xA, float yA, float xB, float yB)
+{
+	float epsilon = 1e-2;
+	float uMax=1.0;
+	float normalQuantile = 3.0902;//2.3263;	//standard normal quantile for alpha=0.999
+	float logNormalQuantile;
+	float grainRadiusSq = grainRadius*grainRadius;
+	float maxRadius = grainRadius;
+	float mu=0.0,sigma=0.0,sigmaSq;
+	float currRadius,currGrainRadiusSq;
+
+	float ag = 1/ceil(1/grainRadius);
+	float sX = ((float)nOut)/((float)(xB-xA)); 
+	float sY = ((float)mOut)/((float)(yB-yA));
+
+
+	//random generator for Monte Carlo
+	noise_prng pMonteCarlo;
+	mysrand(&pMonteCarlo, 2016u*offset);
+	noise_prng p,pTest;
+	mysrand(&pTest, 2016u*offset);
+	
+	float pixOut = 0.0;
+
+	float xIn = xA + (xOut/( (float)nOut))*(xB-xA); 	//((float)xOut)/sX;	//float xIn = ((float)xOut);
+	float yIn = yA + (yOut/( (float)mOut))*(yB-yA);   //((float)yOut)/sY;//float yIn = ((float)yOut);
+
+	float u = imgIn[  (unsigned int)(fmin(fmax(floor(yIn),0.0),(float)(mIn-1)))*nIn+
+					(unsigned int)(fmin(fmax(floor(xIn),0.0),(float)(nIn-1)))];
+	u = u/(uMax+epsilon);
+	float lambda = -((ag*ag)/( pi*(grainRadiusSq + grainSigma*grainSigma))) * log(1.0f-u);
+	float expLambda = exp(-lambda);
+
+	//calculate the mu and sigma for the lognormal distribution
+	if (grainSigma > 0.0)
+	{
+		sigma = sqrt(log( (grainSigma/grainRadius)*(grainSigma/grainRadius) + (float)1.0));
+		sigmaSq = sigma*sigma;
+		mu = log(grainRadius)-sigmaSq/((float)2.0);
+		logNormalQuantile = exp(mu + sigma*normalQuantile);
+		maxRadius = logNormalQuantile;
+	}
+
+	for (unsigned int i=0; i<nMonteCarlo; i++)
+	{
+
+		//position of this pixel, offset by a random gaussian vector
+	    float gaussianPixelCoordX = myrand_gaussian_0_1(&pMonteCarlo);
+		float gaussianPixelCoordY = myrand_gaussian_0_1(&pMonteCarlo);
+
+		float xGaussian = xIn + sigmaFilter*(gaussianPixelCoordX)/sX;
+		float yGaussian = yIn + sigmaFilter*(gaussianPixelCoordY)/sY;
+
+		float lambdaGaussian = lambda;
+		float expLambdaGaussian = expLambda;
+		// Compute the Poisson parameters for the pixel that contains (x,y)
+		if ( ( ( (unsigned int)(fmin(fmax(floor(yGaussian),0.0),(float)(mIn-1))) ) !=
+				(unsigned int)(fmin(fmax(floor(yIn),0.0),(float)(mIn-1))) ) || 
+			( ( (unsigned int)(fmin(fmax(floor(xGaussian),0.0),(float)(nIn-1))) ) !=
+				(unsigned int)(fmin(fmax(floor(xIn),0.0),(float)(nIn-1))) )	)
+		{
+			u = imgIn[  (unsigned int)(fmin(fmax(floor(yGaussian),0.0),(float)(mIn-1)))*nIn+
+						(unsigned int)(fmin(fmax(floor(xGaussian),0.0),(float)(nIn-1)))];
+			u = u/(uMax+epsilon);
+			lambdaGaussian = -((ag*ag)/( pi*(grainRadiusSq + grainSigma*grainSigma) )) * log(1.0f-u);
+			expLambdaGaussian = exp(-lambdaGaussian);
+		}
+	
+		//determine the bounding boxes around the current shifted pixel
+		int minX = floor( (xGaussian - maxRadius)/ag);
+		int maxX = floor( (xGaussian + maxRadius)/ag);
+		int minY = floor( (yGaussian - maxRadius)/ag);
+		int maxY = floor( (yGaussian + maxRadius)/ag);
+
+		bool ptCovered = false; // used to break all for loops
+
+		for(int ncx = minX; ncx <= maxX; ncx++) /* x-cell number */
+		{
+			if(ptCovered == true)
+				break;
+			for(int ncy = minY; ncy <= maxY; ncy++) /* y-cell number */
+			{
+				if(ptCovered == true)
+					break;
+				// cell corner in pixel coordinates
+				vec2d cellCorner;
+				cellCorner.x = ag*ncx;
+				cellCorner.y = ag*ncy;
+
+				/* seed cell = (x/w, y/w) */
+				unsigned int seed = cellseed(ncx,ncy, offset);
+				mysrand(&p, seed);
+
+				// Compute the Poisson parameters for the pixel that contains (x,y)
+				float currLambda = lambdaGaussian;
+				float currExpLambda = expLambdaGaussian;
+				if((floor(cellCorner.x)!=floor(xGaussian)) || (floor(cellCorner.y)!=floor(yGaussian)))
+				{
+					u = imgIn[  (unsigned int)(fmin(fmax(floor(yIn),0.0),(float)(mIn-1)))*nIn+
+								(unsigned int)(fmin(fmax(floor(xIn),0.0),(float)(nIn-1)))];
+					u = u/(uMax+epsilon);
+					currLambda = -((ag*ag)/( pi*(grainRadiusSq + grainSigma*grainSigma))) * log(1.0f-u);
+					currExpLambda = exp(-currLambda);
+				}
+
+				// Draw number of points in the cell
+        		unsigned int Ncell = my_rand_poisson(&p, currLambda, currExpLambda);
+
+				for(unsigned int k=0; k<Ncell; k++)
+        		{
+					//draw the grain centre
+					float xCentreGrain = cellCorner.x + ag*myrand_uniform_0_1(&p);
+					float yCentreGrain = cellCorner.y + ag*myrand_uniform_0_1(&p);
+
+					//draw the grain radius
+					if (grainSigma>0.0)
+					{
+						//draw a random Gaussian radius, and convert it to log-normal
+						currRadius = fmin(exp(mu + sigma*myrand_gaussian_0_1(&p)),maxRadius);
+						currGrainRadiusSq = currRadius*currRadius;
+					}
+					else
+						currGrainRadiusSq = grainRadiusSq;
+
+					// test distance
+					if(sqDistance(xCentreGrain,yCentreGrain, xGaussian,yGaussian) < currGrainRadiusSq)
+					{
+						pixOut = pixOut+(float)1.0;
+						ptCovered = true;
+						break;
+					}
+				}
+			}
+		}
+		ptCovered = false;
+	}
+	return(pixOut/((float)nMonteCarlo));
+}
+
+

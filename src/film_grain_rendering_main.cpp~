@@ -1,0 +1,401 @@
+
+#include <string>
+#include <random>
+#include <chrono>
+#include <ctime>
+#include <cstring>
+#include <cstdio>
+#include <sys/time.h>
+#include <iostream>
+#include <unistd.h>
+#include <assert.h>
+#include <stdlib.h>
+#include <algorithm> 
+#include "matrix.h"
+#include "libtiff_io.h"
+#include "io_png.h"
+#include "film_grain_rendering.h"
+
+
+static void show_help();
+
+/// help on usage of inpainting code
+static void show_help() {
+    std::cerr <<"\nFilm grain synthesis.\n"
+              << "Usage: " << " synthesise_film_grain imgIn.tiff imgNameOut.tiff imgPathOut  [options]\n\n"
+              << "Options (default values in parentheses)\n"
+              << "-r : Grain size (0.05)\n"
+			  << "-grainSigma : Grain standard deviation (0.0)\n"
+  			  << "-NmonteCarlo : Number of Monte Carlo simulations\n"
+			  << "-zoom : zoom of output image\n"
+			  << "-filterSigma : Standard deviation of low-pass filter (0.8)\n"
+			  << "-algorithmID : ID of the algorithm to use (0 : pixel-wise, 1 : grain-wise)\n"
+			  << "-xA \n"
+			  << "-yA \n"
+			  << "-xB \n"
+			  << "-yB \n"
+			  << "-mOut : output resolution, number of rows\n"
+			  << "-nOut : output resolution, number of columns \n"
+              << std::endl;
+}
+
+char* getCmdOption(char ** begin, char ** end, const std::string & option)
+{
+    char ** itr = std::find(begin, end, option);
+    if (itr != end && ++itr != end)
+    {
+        return *itr;
+    }
+    return 0;
+}
+
+bool cmdOptionExists(char** begin, char** end, const std::string& option)
+{
+    return std::find(begin, end, option) != end;
+}
+
+std::string getFileExt(const std::string& s)
+{
+	size_t i = s.rfind('.', s.length());
+	if (i != std::string::npos)
+	{
+		return(s.substr(i+1, s.length() - i));
+	}
+	else
+		return("");
+}
+
+std::string get_curr_dir() {
+	size_t maxBufSize = 1024;
+	char buf[maxBufSize];
+	char* charTemp = getcwd(buf,maxBufSize);
+	std::string currDir(charTemp);
+	return(currDir);
+}
+
+int write_output_image(float *imgOut, const std::string fileNameOut, filmGrainOptionsStruct<float> filmGrainParams)
+{
+	//buffers for output file name
+		char bufferR [50];
+		sprintf (bufferR, "%0.3f", filmGrainParams.r);
+		std::string strR(bufferR);
+
+		char bufferStd [50];
+		sprintf (bufferStd, "%0.4f", filmGrainParams.grainStd);
+		std::string strStd(bufferStd);
+
+		char bufferSigmaConv [50];
+		sprintf (bufferSigmaConv, "%0.4f", filmGrainParams.sigmaConv);
+		std::string strSigmaConv(bufferSigmaConv);
+
+		char bufferZoom [50];
+		sprintf (bufferZoom, "%0.4f", filmGrainParams.s);
+		std::string sZoomStr(bufferZoom);
+
+		char bufferNmonteCarlo [50];
+		sprintf (bufferNmonteCarlo, "%05d", filmGrainParams.NmonteCarlo);
+		std::string sNmonteCarloStr(bufferNmonteCarlo);
+
+		char bufferAlgoName [50];
+		if (filmGrainParams.algorithmID == 0)
+			sprintf (bufferAlgoName, "%s", "pixel_wise");
+		else if (filmGrainParams.algorithmID == 1)
+			sprintf (bufferAlgoName, "%s", "grain_wise");
+		else
+		{
+			std::cout << "Error, unknown algorithm." << std::endl;
+			return(-1);
+		}
+		std::string sAlgoName(bufferAlgoName);
+
+		//write image
+		std::string currDir(get_curr_dir());
+		std::string fileNameOutFull = (char*)( (fileNameOut + "_grainRadius_"
+	 + strR + "_grainStd_" + strStd + "_sigmaConv_" + strSigmaConv + "_s_zoom_" + sZoomStr
+	 + "_nMonteCarlo_" + sNmonteCarloStr + "_algo_" + sAlgoName + ".tiff") .c_str());
+		std::cout << "output file name : " << fileNameOutFull << std::endl;
+
+		if (strcmp((const char*)(getFileExt(fileNameOutFull).c_str()),"tiff")==0)
+		{
+			if (write_tiff_image(imgOut,filmGrainParams.nOut, filmGrainParams.mOut, (const char*)fileNameOutFull.c_str()) ==-1)
+			{
+				std::cout<< "Error, could not write the image file." << std::endl;
+				return(-1);
+			}
+		}
+		else if (strcmp((const char*)(getFileExt(fileNameOutFull).c_str()),"png")==0)
+		{
+			if(0 != io_png_write_f32(fileNameOutFull.c_str(), imgOut,
+				filmGrainParams.nOut, filmGrainParams.mOut, 3))
+			{
+				std::cout<< "Error, could not write the image file." << std::endl;
+				return(-1);
+			}
+		}
+		else
+		{
+			std::cout<< "Error, unknown output file extension." << std::endl;
+			return(-1);
+		}
+
+	return(0);
+}
+
+
+int main(int argc, char* argv[])
+{
+
+	if(argc < 3) {
+        show_help();
+        return -1;
+    }
+	
+	//get file names
+	std::string fileNameIn(argv[1]);
+	std::string fileNameOut(argv[2]);
+
+	float grainSize, grainSigma, s, filterSigma, xA, yA, xB, yB;
+	int mOut, nOut;
+	int algorithmID,NmonteCarlo,colour;
+	std::string shape;
+
+	/**************************************************/
+	/*************   READ INPUT IMAGE   ***************/
+	/**************************************************/
+	float *imgInFloat;
+	uint32 widthIn, heightIn;
+
+	//check the extension of the input file
+	if (strcmp((const char*)(getFileExt(fileNameIn).c_str()),"tiff")==0)
+	{
+		imgInFloat = read_tiff_image((const char*)((fileNameIn).c_str()), &widthIn, &heightIn);
+		if (imgInFloat == NULL)
+		{
+			std::cout<< "Error, could not read the image file." << std::endl;
+			return(-1);
+		}
+	}
+	else if (strcmp((const char*)(getFileExt(fileNameIn).c_str()),"png")==0)
+	{
+		size_t widthIn, heightIn;
+		imgInFloat = io_png_read_f32_rgb((const char*)(fileNameIn.c_str()), &widthIn, &heightIn);
+	}
+	else
+	{
+		std::cout << "Unable to read the input image." << std::endl;
+		return(-1);
+	}
+
+	//show help
+	if(cmdOptionExists(argv, argv+argc, "-h"))
+	{
+		show_help();
+		return(-1);
+	}
+		
+
+	/**************************************************/
+	/*************   GET INPUT OPTIONS   **************/
+	/**************************************************/
+
+	//grain size
+	if(cmdOptionExists(argv, argv+argc, "-r"))
+	{
+			grainSize = (float)atof(getCmdOption(argv, argv + argc, "-r"));
+	}
+	else
+		grainSize = 0.1;
+	if(cmdOptionExists(argv, argv+argc, "-grainSigma"))
+	{
+		grainSigma = (float)atof(getCmdOption(argv, argv + argc, "-grainSigma"));
+	}
+	else
+		grainSigma = 0.0;
+	
+	//zoom
+	if(cmdOptionExists(argv, argv+argc, "-zoom"))
+		s =  (float)atof(getCmdOption(argv, argv + argc, "-zoom"));
+	else
+		s = 1.0;
+
+	//filter standard deviation
+	if(cmdOptionExists(argv, argv+argc, "-filterSigma"))
+		filterSigma = (float)atof(getCmdOption(argv, argv + argc, "-filterSigma"));
+	else
+		filterSigma = 0.8;
+
+	//number of Monte Carlo iterations
+	if(cmdOptionExists(argv, argv+argc, "-NmonteCarlo"))
+		NmonteCarlo = (int)atoi(getCmdOption(argv, argv + argc, "-NmonteCarlo"));
+	else
+		NmonteCarlo = 800;
+
+	//algorithm name
+	if(cmdOptionExists(argv, argv+argc, "-algorithmID"))
+		algorithmID = (int)atoi(getCmdOption(argv, argv + argc, "-algorithmID"));
+	else
+		algorithmID = PIXEL_WISE;
+	//colour image
+	if(cmdOptionExists(argv, argv+argc, "-color"))
+		colour = (int)atoi(getCmdOption(argv, argv + argc, "-color"));
+	else
+		colour = 1;
+
+	//image limits and output resolution
+	//NOTE : these are not taken into account if the "zoom" parameter is set
+	//by default, these are set to the input image limits
+	//xA
+	if(!cmdOptionExists(argv, argv+argc, "-zoom") && cmdOptionExists(argv, argv+argc, "-xA"))
+		xA = atof(getCmdOption(argv, argv + argc, "-xA"));
+	else
+		xA = 0;
+	//yA
+	if(!cmdOptionExists(argv, argv+argc, "-zoom") && cmdOptionExists(argv, argv+argc, "-yA"))
+		yA = atof(getCmdOption(argv, argv + argc, "-yA"));
+	else
+		yA = 0;
+	//xB
+	if(!cmdOptionExists(argv, argv+argc, "-zoom") && cmdOptionExists(argv, argv+argc, "-xB"))
+		xB = atof(getCmdOption(argv, argv + argc, "-xB"));
+	else
+		xB = widthIn-1;
+	//yB
+	if(!cmdOptionExists(argv, argv+argc, "-zoom") && cmdOptionExists(argv, argv+argc, "-yB"))
+		yB = atof(getCmdOption(argv, argv + argc, "-yB"));
+	else
+		yB = heightIn-1;
+
+	//mOut
+	if(!cmdOptionExists(argv, argv+argc, "-zoom") && cmdOptionExists(argv, argv+argc, "-mOut"))
+		mOut = atoi(getCmdOption(argv, argv + argc, "-mOut"));
+	else
+		mOut = (int)floor(s * (int)heightIn);
+	//nOut
+	if(!cmdOptionExists(argv, argv+argc, "-zoom") && cmdOptionExists(argv, argv+argc, "-nOut"))
+		nOut = atoi(getCmdOption(argv, argv + argc, "-nOut"));
+	else
+		nOut = (int)floor(s * (int)widthIn);
+	//check the xA, yA, xB, yB parameters
+	if ( xA <0 || yA<0 || xB>=(widthIn) || yB>=(heightIn))
+	{
+		std::cout << "Error, the (xA,yA), (xB,yB) parameters are out of bounds." << std::endl;
+		return(-1);
+	}
+		
+	//create film grain options structure
+	filmGrainOptionsStruct<float> filmGrainParams;
+	filmGrainParams.r = grainSize;
+	filmGrainParams.grainStd = grainSigma;//
+	filmGrainParams.grainShape = shape;
+	filmGrainParams.grainDistribution = "logNormal";//"constant";//"logNormal";//
+	filmGrainParams.s = ((float)mOut)/((float)(heightIn)); 	//zoom
+	filmGrainParams.sigmaConv = (float)filterSigma;
+	filmGrainParams.NmonteCarlo = NmonteCarlo; 	//number of monte carlo iterations
+	filmGrainParams.algorithmID = algorithmID; 	//name of the algorithm (grain-wise or pixel-wise)
+	filmGrainParams.xA = xA;
+	filmGrainParams.yA = yA;
+	filmGrainParams.xB = xB;
+	filmGrainParams.yB = yB;
+	filmGrainParams.mOut = mOut;
+	filmGrainParams.nOut = nOut;
+	
+	//display parameters
+	std::cout<< "Input image size : " << widthIn << " x " << heightIn << std::endl;
+	std::cout<< "grainRadius : " << filmGrainParams.r << std::endl;
+	std::cout<< "grainStd : " << filmGrainParams.grainStd << std::endl;
+	std::cout<< "sigmaFilter : " <<  filmGrainParams.sigmaConv << std::endl;
+	std::cout<< "NmonteCarlo : " << filmGrainParams.NmonteCarlo << std::endl;
+	if(cmdOptionExists(argv, argv+argc, "-zoom"))
+		std::cout<< "zoom : " <<  filmGrainParams.s << std::endl;
+	std::cout<< "xA : " << filmGrainParams.xA << std::endl;
+	std::cout<< "yA : " << filmGrainParams.yA << std::endl;
+	std::cout<< "xB : " << filmGrainParams.xB << std::endl;
+	std::cout<< "yB : " << filmGrainParams.yB << std::endl;
+	std::cout<< "mOut : " << filmGrainParams.mOut << std::endl;
+	std::cout<< "nOut : " << filmGrainParams.nOut << std::endl;
+	if (filmGrainParams.algorithmID == PIXEL_WISE)
+	{
+		std::cout<< "algorithm name : pixel-wise" << std::endl;
+	}
+	else if(filmGrainParams.algorithmID == GRAIN_WISE)
+	{
+		std::cout<< "algorithm name : grain-wise" << std::endl;
+	}
+	else
+	{
+		std::cout << "Error, unknown algorithm." << std::endl;
+		return(-1);
+	}
+
+	/**************************************************/
+	/*****  TIME AND CARRY OUT GRAIN RENDERING   ******/
+	/**************************************************/
+
+	struct timeval start, end;
+	gettimeofday(&start, NULL);
+
+	//create output float image
+	int nColours = 3;
+	float *imgOut = new float[(mOut) * (nOut) * nColours];
+
+	matrix<float> *imgIn = new matrix<float>();
+	imgIn->allocate_memory((int)heightIn, (int)widthIn);
+	//create pseudo-random number generator for the colour seeding
+	noise_prng pSeedColour;
+	mysrand(&pSeedColour, (unsigned int)1);
+	for (int colourChannel=0; colourChannel< nColours; colourChannel++)
+	{
+		//copy memory
+		for (int i=0; i<(int)heightIn; i++)
+		{
+			for (int j=0; j<(int)widthIn; j++)
+			{
+				imgIn->set_value(i,j,(float)imgInFloat[ (int) i*((int)widthIn) + (int)j + colourChannel*((int)widthIn)*((int)heightIn)]);//);
+			}
+
+		}
+		//normalise input image
+		imgIn->divide((float)255);
+		//execute the film grain synthesis
+		std::cout << "***************************" << std::endl;
+		
+		matrix<float> *imgOutTemp;
+
+		/***************************************/
+		/**   carry out film grain synthesis  **/
+		/***************************************/
+		filmGrainParams.grainSeed = (unsigned int)myrand(&pSeedColour);
+		if (filmGrainParams.algorithmID == PIXEL_WISE)
+			imgOutTemp = film_grain_rendering_pixel_wise(imgIn, filmGrainParams);
+		else if (filmGrainParams.algorithmID == GRAIN_WISE)
+			imgOutTemp = film_grain_rendering_grain_wise(imgIn, filmGrainParams);
+		else
+		{
+			std::cout << "Error, the specified film grain rendering algorithm is unknown." << std::endl;
+			delete imgIn;
+			return(-1);
+		}
+		//put the output image back to [0, 255]
+		imgOutTemp->multiply((float)255.0);
+		
+		for (int i=0; i<(imgOutTemp->get_nrows()) ; i++)
+			for (int j=0; j< (imgOutTemp->get_ncols()); j++)
+				imgOut[ j + i*(imgOutTemp->get_ncols()) + colourChannel*(imgOutTemp->get_nrows()) * (imgOutTemp->get_ncols())] = (*imgOutTemp)(i,j);
+		delete imgOutTemp;
+	}
+
+	write_output_image(imgOut, fileNameOut, filmGrainParams);
+
+	delete imgInFloat;
+	delete imgIn;
+	delete imgOut;
+	
+	gettimeofday(&end, NULL);
+	double elapsedTime = (end.tv_sec  - start.tv_sec) + 
+			 (end.tv_usec - start.tv_usec) / 1.e6;		
+	std::cout << "time elapsed : " << elapsedTime << std::endl;	
+	std::cout << "***************************" << std::endl << std::endl << std::endl;
+
+	return(0);
+
+}

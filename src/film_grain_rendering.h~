@@ -1,0 +1,51 @@
+
+
+#ifndef FILM_GRAIN_RENDERING_H
+#define FILM_GRAIN_RENDERING_H
+	#include <vector>
+	#include <cmath>
+	#include <iostream> 
+	#include <random>
+	#include <chrono>
+	#include <sys/time.h>
+	#include <fstream>
+
+	#ifdef _OPENMP
+	#include <omp.h>
+	#endif
+	
+	#include "matrix.h"
+	#include "render_pixel.h"
+
+	#define N_CHANNELS 3
+	#define PIXEL_WISE 0
+	#define GRAIN_WISE 1
+
+	template <typename T>
+	struct filmGrainOptionsStruct {
+		std::string grainShape;
+		std::string grainDistribution;
+		T r;
+		T grainStd;
+		T sigmaConv;
+		unsigned int NmonteCarlo;
+		unsigned int algorithmID;
+		float s;
+		float xA;
+		float yA;
+		float xB;
+		float yB;
+		unsigned int mOut;
+		unsigned int nOut;
+		unsigned int grainSeed;
+	};
+
+
+	float grain_measure(std::string grainShape, float grainRadius, float grainVar);
+	matrix<float>* boolean_model(float lambda, float r, float stdGrain,
+		std::string distributionType, int xPixel, int yPixel, unsigned int offset);//, std::mt19937 rndGenerator);
+
+	matrix<float> *film_grain_rendering_pixel_wise(matrix<float> *imgIn, filmGrainOptionsStruct<float> filmGrainOptions);
+	matrix<float> *film_grain_rendering_grain_wise(matrix<float> *imgIn, filmGrainOptionsStruct<float> filmGrainOptions);
+
+#endif
