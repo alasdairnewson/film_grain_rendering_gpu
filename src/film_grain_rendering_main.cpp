@@ -228,6 +228,7 @@ int main(int argc, char* argv[])
 	float grainSize, sigmaR, s, sigmaFilter, xA, yA, xB, yB;
 	int mOut, nOut;
 	unsigned int NmonteCarlo;
+        int randSeed; // RS
 	int colourActivated;
 
 	/**************************************************/
@@ -272,6 +273,14 @@ int main(int argc, char* argv[])
 	/**************************************************/
 	/*************   GET INPUT OPTIONS   **************/
 	/**************************************************/
+
+        // RS rand seed
+        if(cmdOptionExists(argv, argv+argc, "-seed"))
+        {
+            randSeed = (int)atof(getCmdOption(argv, argv+argc, "-seed"));
+        }
+        else
+            randSeed = 1;
 
 	//grain size
 	if(cmdOptionExists(argv, argv+argc, "-r"))
@@ -423,10 +432,9 @@ int main(int argc, char* argv[])
 			}
 		}
 		//normalise input image
-		float epsilon = 0.1;
-		imgIn->divide((float)((float)N_GREY_LEVELS+epsilon));
-		
-		filmGrainParams.grainSeed = 1;//(unsigned int)myrand(&pSeedColour);
+                imgIn->divide((float)(MAX_GREY_LEVEL+EPSILON_GREY_LEVEL)); // RS
+
+		filmGrainParams.grainSeed = (unsigned int)randSeed; // RS //(unsigned int)myrand(&pSeedColour);
 		
 		/***************************************/
 		/**   carry out film grain synthesis  **/
@@ -435,9 +443,9 @@ int main(int argc, char* argv[])
 			imgIn->get_ncols(), imgIn->get_nrows(), nOut, mOut, filmGrainParams);
 		
 		//put the output image back to [0, 255]
-		for (int i=0; i<(mOut*nOut); i++)
-			imgOutTemp[i] = imgOutTemp[i] * ( ((float)N_GREY_LEVELS)+epsilon);
-		
+                for (int i=0; i<(mOut*nOut); i++)
+			imgOutTemp[i] = imgOutTemp[i] * ((float)(MAX_GREY_LEVEL+EPSILON_GREY_LEVEL));
+
 		if (colourActivated>0) 	//colour grain
 		{
 			for ( unsigned int i=0; i<(unsigned int)mOut ; i++)

@@ -532,8 +532,9 @@ float* film_grain_rendering_pixel_wise_cuda(const float *src_im, int widthIn, in
 	//unsigned int seed = time(NULL);
 	struct timeval time; 
 	gettimeofday(&time,NULL);
-	//unsigned int seed = (unsigned int) ( (time.tv_sec * 1000) + (time.tv_usec / 1000) );
-	unsigned int seed = 1;	
+        // RS EDIT: uncomment the line below, to create changing seed. sheesh!
+	unsigned int seed = (unsigned int) ( (time.tv_sec * 1000) + (time.tv_usec / 1000) );
+	//unsigned int seed = 1;	
 	//std::cout<< "seed : " << seed << std::endl;
     
 	kernel<<<blocks,threads>>>(dev_out_im, widthOut, heightOut, 
