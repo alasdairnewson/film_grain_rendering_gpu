@@ -36,14 +36,8 @@ Table of Contents
   This source code provides an implementation of the film grain rendering algorithm of Newson et al.
 
 
-  The 'bin/film_grain_rendering_main' program reads an PNG image, add impulse-gaussian
-  noise and then apply the parigi denoising algorithm. The algorithm
-  estimates the probability of impulse noise and extract similar
-  patches. From them, it estimates for each pixels an histogram of all
-  possible values. The denoised image is defined from the best mode of
-  each histograms.
-
-  Only 8bit GRAY PNG images are handled.
+  The 'bin/film_grain_rendering_main' program reads an input image, and adds film grain noise/texture
+  to this image. Only PNG or TIFF (black and white or colour) images are handled.
 
 
 3 Requirement
@@ -98,7 +92,8 @@ Table of Contents
   -filterSigma : standard deviation (in pixels) of the Gaussian filter applied to the continuous grain model [0.8]
   -zoom : zoom coefficient which increases the resolution of the output image with respect to the input image resolution [1.0]
   -algorithmID : identifier of the algorithm used. Can be equal to 0 (pixel-wise algorithm) or 1 (grain-wise algorithm) [0]
-  -NmonteCarlo : number of Monte Carlo simulations [800]
+  -NmonteCarlo : number of Monte Carlo simulations. This influences the quality of the result (the higher the number, the better the quality,
+  but the longer it takes) [800]
 
   #Further parameters concerning zoom and resolution. These parameters are to be specified if the user wishes to zoom on a specific region of the input image and only carry out the rendering in this region. In this case, you should also specify the number of pixels in the x and y directions (nX, nY).
   #Note, if the 'zoom' parameter is activated, then the following parameters are ignored, as they may potentially be incompatible with the zoom.

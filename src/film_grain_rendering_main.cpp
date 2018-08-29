@@ -24,17 +24,16 @@ static void show_help() {
               << "Options (default values in parentheses)\n"
               << "-r : Grain size (0.05)\n"
 			  << "-sigmaR : Grain standard deviation (0.0)\n"
-  			  << "-NmonteCarlo : Number of Monte Carlo simulations\n"
+  			  << "-NmonteCarlo : Number of Monte Carlo simulations. This influences the quality of the result (the higher the number, the better the quality, but the longer it takes). (800)\n"
 			  << "-zoom : zoom of output image\n"
 			  << "-sigmaFilter : Standard deviation of Gaussian filter (0.8)\n"
-			  << "-color : whether color grain is activated (0 : black-and-white, 1 : color, default : 1)"
-			  << "-xA \n"
+			  << "-color : whether color grain is activated (0 : black-and-white, 1 : color, default : 1)\n"
+			  << "-randomizeSeed : randomize the seed for a changing noise pattern (0 : don't randomize, 1: randomize, default : 1)"<< "-xA \n"
 			  << "-yA \n"
 			  << "-xB \n"
 			  << "-yB \n"
 			  << "-mOut : output resolution, number of rows\n"
 			  << "-nOut : output resolution, number of columns\n"
-                          << "-randomizeSeed : randomize the seed for a changing noise pattern (0 : don't randomize, 1: randomize, default : 0)"
               << std::endl;
 }
 
@@ -229,7 +228,7 @@ int main(int argc, char* argv[])
 	float grainSize, sigmaR, s, sigmaFilter, xA, yA, xB, yB;
 	int mOut, nOut;
 	unsigned int NmonteCarlo;
-        unsigned int randomizeSeed;
+    unsigned int randomizeSeed;
 	int colourActivated;
 
 	/**************************************************/
@@ -366,7 +365,7 @@ int main(int argc, char* argv[])
 		std::cout << "DEBUG: got randomizeSeed flag" <<std::endl;
 		randomizeSeed = (unsigned int)atoi(getCmdOption(argv, argv + argc, "-randomizeSeed"));
 	} else {
-		randomizeSeed = 0;
+		randomizeSeed = 1;
 	}
 
 	//create film grain options structure
