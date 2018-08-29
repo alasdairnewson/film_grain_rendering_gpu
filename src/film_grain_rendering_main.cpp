@@ -34,6 +34,7 @@ static void show_help() {
 			  << "-yB \n"
 			  << "-mOut : output resolution, number of rows\n"
 			  << "-nOut : output resolution, number of columns\n"
+                          << "-randomizeSeed : randomize the seed for a changing noise pattern (0 : don't randomize, 1: randomize, default : 0)"
               << std::endl;
 }
 
@@ -228,6 +229,7 @@ int main(int argc, char* argv[])
 	float grainSize, sigmaR, s, sigmaFilter, xA, yA, xB, yB;
 	int mOut, nOut;
 	unsigned int NmonteCarlo;
+        unsigned int randomizeSeed;
 	int colourActivated;
 
 	/**************************************************/
@@ -276,7 +278,7 @@ int main(int argc, char* argv[])
 	//grain size
 	if(cmdOptionExists(argv, argv+argc, "-r"))
 	{
-			grainSize = (float)atof(getCmdOption(argv, argv + argc, "-r"));
+		grainSize = (float)atof(getCmdOption(argv, argv + argc, "-r"));
 	}
 	else
 		grainSize = 0.1;
@@ -359,7 +361,14 @@ int main(int argc, char* argv[])
 		std::cout << "xB : " << xB << ", yB : " << yB <<std::endl;
 		return(-1);
 	}
-		
+
+	if(cmdOptionExists(argv, argv+argc, "-randomizeSeed")) {
+		std::cout << "DEBUG: got randomizeSeed flag" <<std::endl;
+		randomizeSeed = (unsigned int)atoi(getCmdOption(argv, argv + argc, "-randomizeSeed"));
+	} else {
+		randomizeSeed = 0;
+	}
+
 	//create film grain options structure
 	filmGrainOptionsStruct<float> filmGrainParams;
 
@@ -374,7 +383,8 @@ int main(int argc, char* argv[])
 	filmGrainParams.yB = yB;
 	filmGrainParams.mOut = mOut;
 	filmGrainParams.nOut = nOut;
-	
+        filmGrainParams.randomizeSeed = randomizeSeed;
+
 	//display parameters
 	std::cout<< "Input image size : " << widthIn << " x " << heightIn << std::endl;
 	std::cout<< "grainRadius : " << filmGrainParams.muR << std::endl;
@@ -393,6 +403,7 @@ int main(int argc, char* argv[])
 	std::cout<< "yB : " << filmGrainParams.yB << std::endl;
 	std::cout<< "mOut : " << filmGrainParams.mOut << std::endl;
 	std::cout<< "nOut : " << filmGrainParams.nOut << std::endl;
+        std::cout<< "randomizeSeed : " << filmGrainParams.randomizeSeed << std::endl;
 
 	/**************************************************/
 	/*****  TIME AND CARRY OUT GRAIN RENDERING   ******/
@@ -423,21 +434,18 @@ int main(int argc, char* argv[])
 			}
 		}
 		//normalise input image
-		float epsilon = 0.1;
-		imgIn->divide((float)((float)N_GREY_LEVELS+epsilon));
-		
-		filmGrainParams.grainSeed = 1;//(unsigned int)myrand(&pSeedColour);
-		
+                imgIn->divide((float)(MAX_GREY_LEVEL+EPSILON_GREY_LEVEL)); // RS
+
 		/***************************************/
 		/**   carry out film grain synthesis  **/
 		/***************************************/
 		imgOutTemp = film_grain_rendering_pixel_wise_cuda(imgIn->get_ptr(),
 			imgIn->get_ncols(), imgIn->get_nrows(), nOut, mOut, filmGrainParams);
-		
+
 		//put the output image back to [0, 255]
-		for (int i=0; i<(mOut*nOut); i++)
-			imgOutTemp[i] = imgOutTemp[i] * ( ((float)N_GREY_LEVELS)+epsilon);
-		
+                for (int i=0; i<(mOut*nOut); i++)
+			imgOutTemp[i] = imgOutTemp[i] * ((float)(MAX_GREY_LEVEL+EPSILON_GREY_LEVEL));
+
 		if (colourActivated>0) 	//colour grain
 		{
 			for ( unsigned int i=0; i<(unsigned int)mOut ; i++)

@@ -8,7 +8,6 @@
 	#include <sys/time.h>
 	#include <fstream>
 	#include <cuda.h>
-	
 	#include "matrix.h"
 
 	#define PIXEL_WISE 0
@@ -34,7 +33,7 @@
 		float yB;
 		unsigned int mOut;
 		unsigned int nOut;
-		unsigned int grainSeed;
+		unsigned int randomizeSeed;
 	};
 
 	struct vec2d

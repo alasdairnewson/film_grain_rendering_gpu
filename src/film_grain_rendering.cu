@@ -451,6 +451,7 @@ float* film_grain_rendering_pixel_wise_cuda(const float *src_im, int widthIn, in
     std::cout<< "yA : " << filmGrainOptions.yA << std::endl;
     std::cout<< "xB : " << filmGrainOptions.xB << std::endl;
     std::cout<< "yB : " << filmGrainOptions.yB << std::endl;
+    std::cout<< "randomizeSeed : " << filmGrainOptions.randomizeSeed << std::endl;
     std::cout<< "------------------" << std::endl;
 
     printf("Output image size is %d x %d\n", widthOut, heightOut);
@@ -532,8 +533,13 @@ float* film_grain_rendering_pixel_wise_cuda(const float *src_im, int widthIn, in
 	//unsigned int seed = time(NULL);
 	struct timeval time; 
 	gettimeofday(&time,NULL);
-	//unsigned int seed = (unsigned int) ( (time.tv_sec * 1000) + (time.tv_usec / 1000) );
-	unsigned int seed = 1;	
+        unsigned int seed;
+        // RS EDIT: add flag to decide whether to randomize grain seed or not
+        if (filmGrainOptions.randomizeSeed > 0) {
+            seed = (unsigned int) ( (time.tv_sec * 1000) + (time.tv_usec / 1000) );
+        } else {
+	    seed = 1;
+        }	
 	//std::cout<< "seed : " << seed << std::endl;
     
 	kernel<<<blocks,threads>>>(dev_out_im, widthOut, heightOut, 
