@@ -246,7 +246,7 @@ __device__ unsigned int my_rand_poisson(unsigned int *prngstate, float lambda, f
 * @param x2, y2 : x, y coordinates of the second point
 * @return squared Euclidean distance
 */
-__device__ float sqDistance(const float x1, const float y1, const float x2, const float y2)
+__device__ double sqDistance(const double x1, const double y1, const double x2, const double y2)
 {
 	return((x1-x2)*(x1-x2) + (y1-y2)*(y1-y2));
 }
@@ -332,23 +332,24 @@ __global__ void kernel( float *out_im, size_t out_w, size_t out_h,
 			lambda = -((ag*ag)/( pi*(grainRadiusSq + grainSigma*grainSigma) )) * log(1.0f-u);*/
 
 			//determine the bounding boxes around the current shifted pixel
-			int minX = floor( (xGaussian - maxRadius)/ag);
-			int maxX = floor( (xGaussian + maxRadius)/ag);
-			int minY = floor( (yGaussian - maxRadius)/ag);
-			int maxY = floor( (yGaussian + maxRadius)/ag);
+			// these operations are set to double precision because the number of cells can be quite large
+			unsigned int minX = (unsigned int)floor( ( (double)xGaussian - (double)maxRadius)/((double)ag));
+			unsigned int maxX = (unsigned int)floor( ( (double)xGaussian + (double)maxRadius)/((double)ag));
+			unsigned int minY = (unsigned int)floor( ( (double)yGaussian - (double)maxRadius)/((double)ag));
+			unsigned int maxY = (unsigned int)floor( ( (double)yGaussian + (double)maxRadius)/((double)ag));
 
 			bool ptCovered = false; // used to break all for loops
 
-			for(int ncx = minX; ncx <= maxX; ncx++) // x-cell number
+			for(unsigned int ncx = minX; ncx <= maxX; ncx++) // x-cell number
 			{
 				if(ptCovered == true)
 				break;
-				for(int ncy = minY; ncy <= maxY; ncy++) // y-cell number
+				for(unsigned int ncy = minY; ncy <= maxY; ncy++) // y-cell number
 				{
 					if(ptCovered == true)
 						break;
-					float cellCornerX = ag*((float)ncx);
-					float cellCornerY = ag*((float)ncy);
+					double cellCornerX = ((double)ag)*((double)ncx);
+			        double cellCornerY = ((double)ag)*((double)ncy);
 
 					unsigned int seed = cellseed(ncx, ncy, offsetRand);
 					mysrand(&p,seed);
@@ -380,8 +381,9 @@ __global__ void kernel( float *out_im, size_t out_w, size_t out_h,
 					for(unsigned int k=0; k<Ncell; k++)
 					{
 						//draw the grain centre
-						float xCentreGrain = cellCornerX + ag*myrand_uniform_0_1(&p);
-						float yCentreGrain = cellCornerY + ag*myrand_uniform_0_1(&p);
+						//changed to double precision to avoid incorrect operations
+						double xCentreGrain = (double)cellCornerX + ((double)ag)*((double)myrand_uniform_0_1(&p));
+				        double yCentreGrain = (double)cellCornerY + ((double)ag)*((double)myrand_uniform_0_1(&p));
 
 						//draw the grain radius
 						if (grainSigma>0.0)
@@ -394,7 +396,7 @@ __global__ void kernel( float *out_im, size_t out_w, size_t out_h,
 							currGrainRadiusSq = grainRadiusSq;
 
 						// test distance
-						if(sqDistance(xCentreGrain, yCentreGrain, xGaussian, yGaussian) < currGrainRadiusSq)
+						if(sqDistance(xCentreGrain, yCentreGrain, xGaussian, yGaussian) < (double)currGrainRadiusSq)
 						{
 							pixOut = pixOut+(float)1.0;
 							ptCovered = true;

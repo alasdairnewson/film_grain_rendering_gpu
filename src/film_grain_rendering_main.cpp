@@ -466,7 +466,7 @@ int main(int argc, char* argv[])
 					imgOut[ j + i*(nOut) + 2*(mOut) * (nOut)] = 
 						imgOutTemp[  j + i*(nOut) ];	//blue
 				}
-			delete imgOutTemp;std::cout << "Here" <<std::endl;
+			delete imgOutTemp;
 			break;
 		}
 	}
